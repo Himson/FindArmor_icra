@@ -1,0 +1,6 @@
+build
+*.swp
+*.swo
+*.txt~
+*.h~
+*.cpp~
