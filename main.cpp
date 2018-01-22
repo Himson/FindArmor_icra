@@ -13,7 +13,7 @@
 
 #define PI 3.14159265358979323
 
-#define DRAW 1
+//#define DRAW 1
 
 using namespace cv;
 using namespace std;
@@ -197,14 +197,27 @@ private:
                 //}
                 //cout << "i: " << angeli << " j: " << angelj << endl;
                 if (abs(angeli - angelj) < min_angel) {
-                    float distance = abs((pi.x - pj.x) * cos((angeli + 90) * PI / 180)
+                    float distance_n = abs((pi.x - pj.x) * cos((angeli + 90) * PI / 180)
                         + (pi.y - pj.y) * sin((angeli + 90) * PI / 180));
                     //灯条距离合适
                     //cout << "distance: " << distance
                     //<< " ai: " << ai
                     //<< " aj: " << aj << endl;
-                    if (distance < 2 * ai || distance > 4.5 * ai
-                        || distance < 2 * aj || distance > 4.5 * aj) {
+                    if (distance_n < 2 * ai || distance_n > 4.5 * ai
+                        || distance_n < 2 * aj || distance_n > 4.5 * aj) {
+#ifdef DRAW
+                        drawContours(bin, contours, i, Scalar(150), CV_FILLED);
+                        drawContours(bin, contours, j, Scalar(150), CV_FILLED);
+#endif
+                        continue;
+                    }
+                    float distance_t = abs((pi.x - pj.x) * cos((angeli) * PI / 180)
+                        + (pi.y - pj.y) * sin((angeli) * PI / 180));
+                    //灯条距离合适
+                    //cout << "distance: " << distance
+                    //<< " ai: " << ai
+                    //<< " aj: " << aj << endl;
+                    if (distance_t > 1.5 * ai || distance_t > 1.5 * aj) {
 #ifdef DRAW
                         drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                         drawContours(bin, contours, j, Scalar(150), CV_FILLED);

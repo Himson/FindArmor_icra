@@ -1,10 +1,12 @@
 #include "CameraApi.h" //相机SDK的API头文件
+#include <iostream>
 
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include <stdio.h>
 
 using namespace cv;
+using namespace std;
 
 class GlobalCamera {
 private:
@@ -55,10 +57,11 @@ int GlobalCamera::init()
     CameraGetCapability(hCamera, &tCapability);
 
     // set resolution to 320*240
-    CameraSetImageResolution(hCamera, &(tCapability.pImageSizeDesc[2]));
+    //CameraSetImageResolution(hCamera, &(tCapability.pImageSizeDesc[2]));
     g_pRgbBuffer = (unsigned char*)malloc(tCapability.sResolutionRange.iHeightMax * tCapability.sResolutionRange.iWidthMax * 3);
     //g_readBuf = (unsigned char*)malloc(tCapability.sResolutionRange.iHeightMax*tCapability.sResolutionRange.iWidthMax*3);
-
+    CameraSetAeState(hCamera, false);
+    CameraSetExposureTime(hCamera, 4000);
     /*让SDK进入工作模式，开始接收来自相机发送的图像
     数据。如果当前相机是触发模式，则需要接收到
     触发帧以后才会更新图像。    */
@@ -84,6 +87,9 @@ int GlobalCamera::init()
 bool GlobalCamera::read(Mat& src)
 {
     if (CameraGetImageBuffer(hCamera, &sFrameInfo, &pbyBuffer, 1000) == CAMERA_STATUS_SUCCESS) {
+        double exposure;
+        CameraGetExposureTime(hCamera, &exposure);
+        cout << "Exposure Time: " << exposure << endl;
         CameraImageProcess(hCamera, pbyBuffer, g_pRgbBuffer, &sFrameInfo);
         if (iplImage) {
             cvReleaseImageHeader(&iplImage);
