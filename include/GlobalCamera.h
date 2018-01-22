@@ -60,8 +60,12 @@ int GlobalCamera::init()
     //CameraSetImageResolution(hCamera, &(tCapability.pImageSizeDesc[2]));
     g_pRgbBuffer = (unsigned char*)malloc(tCapability.sResolutionRange.iHeightMax * tCapability.sResolutionRange.iWidthMax * 3);
     //g_readBuf = (unsigned char*)malloc(tCapability.sResolutionRange.iHeightMax*tCapability.sResolutionRange.iWidthMax*3);
-    CameraSetAeState(hCamera, false);
-    CameraSetExposureTime(hCamera, 4000);
+    CameraSetAeState(hCamera, true);
+    //CameraSetExposureTime(hCamera, 6000);
+    //CameraSetAeTarget(hCamera, -10000);
+    //int ae_target;
+    //CameraGetAeTarget(hCamera, &ae_target);
+    //cout << "Ae Target: " << ae_target << endl;
     /*让SDK进入工作模式，开始接收来自相机发送的图像
     数据。如果当前相机是触发模式，则需要接收到
     触发帧以后才会更新图像。    */
@@ -87,9 +91,9 @@ int GlobalCamera::init()
 bool GlobalCamera::read(Mat& src)
 {
     if (CameraGetImageBuffer(hCamera, &sFrameInfo, &pbyBuffer, 1000) == CAMERA_STATUS_SUCCESS) {
-        double exposure;
-        CameraGetExposureTime(hCamera, &exposure);
-        cout << "Exposure Time: " << exposure << endl;
+        //double exposure;
+        //CameraGetExposureTime(hCamera, &exposure);
+        //cout << "Exposure Time: " << exposure << endl;
         CameraImageProcess(hCamera, pbyBuffer, g_pRgbBuffer, &sFrameInfo);
         if (iplImage) {
             cvReleaseImageHeader(&iplImage);

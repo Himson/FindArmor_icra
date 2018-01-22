@@ -148,8 +148,9 @@ last_x = target_x;
     buf[4] = (converted_y >> 8) & 0xFF;
     buf[5] = converted_y & 0xFF;
     buf[6] = 0xA7;
-    for (int i = 0; i < 7; ++i)
+    for (int i = 0; i < 7; ++i) {
         cout << hex << (unsigned int)(unsigned char)buf[i] << " ";
+    }
     cout << endl;
 
 #if PLATFORM == MANIFOLD
@@ -160,4 +161,4 @@ last_x = target_x;
     //串口发送buf的前40字节
     n = write(fd, buf, 7);
 #endif
-}
+};

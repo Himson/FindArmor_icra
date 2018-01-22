@@ -9,11 +9,11 @@
 
 #define VIDEO_FILE 0
 #define VIDEO_CAMERA 1
-#define VIDEO VIDEO_FILE
+#define VIDEO VIDEO_CAMERA
 
 #define PI 3.14159265358979323
 
-//#define DRAW 1
+#define DRAW 1
 
 using namespace cv;
 using namespace std;
@@ -103,9 +103,11 @@ public:
             }
             if (found_ctr > 100) {
                 Mat roi = frame(bbox);
-                float mean_roi = mean(roi)[0];
-                cout << endl << "mean: " << mean_roi << endl;
-                if (mean_roi < 20) {
+                threshold(roi, roi, 240, 255, THRESH_BINARY);
+                //imshow("roi", roi);
+                //cout << roi.size() << endl;
+                //cout << endl << dec << "no zero: " << countNonZero(roi) - 4 * (roi.cols + roi.rows)<< endl;
+                if (countNonZero(roi) - 4 * (roi.cols + roi.rows) < 50) {
                     transferState(EXPLORE);
                 }
                 found_ctr = 0;
@@ -127,7 +129,7 @@ private:
     bool explore(Mat& frame)
     {
         static Mat bin;
-        threshold(frame, bin, 230, 255, THRESH_BINARY);
+        threshold(frame, bin, 240, 255, THRESH_BINARY);
 #ifdef DRAW
         imshow("gray", bin);
 #endif
