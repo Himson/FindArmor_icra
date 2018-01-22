@@ -1,6 +1,6 @@
 #include "GlobalCamera.h"
 #include "Serial.h"
-#include <omp.h>
+//#include <omp.h>
 #include <opencv2/core/ocl.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/tracking/tracker.hpp>
@@ -11,11 +11,9 @@
 #define VIDEO_CAMERA 1
 #define VIDEO VIDEO_FILE
 
-#define EXPLORE 0
-#define TRACK_INIT 1
-#define TRACK 2
-
 #define PI 3.14159265358979323
+
+#define DRAW 1
 
 using namespace cv;
 using namespace std;
@@ -29,56 +27,110 @@ double tic()
 
 class Armor {
 private:
-    int state;
+    enum State {
+        EXPLORE,
+        TRACK_INIT,
+        TRACK
+    } state;
     Rect2d bbox;
     Serial serial;
     double timer;
     Ptr<Tracker> tracker;
+    long found_ctr;
+    long unfound_ctr;
+
+    int srcW, srcH;
+    int BORDER_IGNORE;
+    int BOX_EXTRA;
 
 public:
     void init()
     {
-
-        // Get openmp cores
-        cout << "available cores:" << omp_get_num_procs() << endl;
-
         // init serial
         serial.init();
-
         // fps
         timer = tic();
-
         // state machine
         state = EXPLORE;
+        found_ctr = 0;
+        unfound_ctr = 0;
+        srcW = 640;
+        srcH = 480;
+        BORDER_IGNORE = 10;
+        BOX_EXTRA = 10;
     }
 
     int run(Mat& frame)
     {
-        //video.read(frame);
         if (frame.empty())
             return -1;
 #if VIDEO == VIDEO_FILE
         cvtColor(frame, frame, CV_BGR2GRAY);
 #endif
+#ifdef DRAW
         imshow("frame", frame);
-        waitKey(1);
+#endif
+
+        //cout << dec << "found_ctr: " << found_ctr << endl;
         if (state == EXPLORE) {
-            explore(frame);
-        }
-        if (state == TRACK_INIT) {
+            if (explore(frame)) {
+                ++found_ctr;
+                unfound_ctr = 0;
+            } else {
+                ++unfound_ctr;
+                found_ctr = 0;
+            }
+
+            if (found_ctr > 1) {
+                serial.sendTarget((bbox.x + bbox.width / 2) * 1, (bbox.y + bbox.height / 2) * 1, true);
+                transferState(TRACK_INIT);
+                found_ctr = 0;
+            }
+            if (unfound_ctr > 5) {
+                serial.sendTarget(320, 240, false);
+                unfound_ctr = 0;
+            }
+        } else if (state == TRACK_INIT) {
             trackInit(frame);
+            transferState(TRACK);
+        } else if (state == TRACK) {
+            if (track(frame)) {
+                serial.sendTarget((bbox.x + bbox.width / 2) * 1, (bbox.y + bbox.height / 2) * 1, true);
+                ++found_ctr;
+            } else {
+                transferState(EXPLORE);
+                found_ctr = 0;
+            }
+            if (found_ctr > 100) {
+                Mat roi = frame(bbox);
+                float mean_roi = mean(roi)[0];
+                cout << endl << "mean: " << mean_roi << endl;
+                if (mean_roi < 20) {
+                    transferState(EXPLORE);
+                }
+                found_ctr = 0;
+            }
         }
-        if (state == TRACK) {
-            track(frame);
-        }
+
+#ifdef DRAW
+        waitKey(1);
+#endif
         return 0;
     }
 
-    void explore(Mat& frame)
+private:
+    void transferState(State s)
+    {
+        state = s;
+    }
+
+    bool explore(Mat& frame)
     {
         static Mat bin;
         threshold(frame, bin, 230, 255, THRESH_BINARY);
+#ifdef DRAW
         imshow("gray", bin);
+#endif
         vector<vector<Point> > contours;
         vector<RotatedRect> lights;
         findContours(bin, contours,
@@ -86,8 +138,10 @@ public:
         for (unsigned int i = 0; i < contours.size(); ++i) {
             int area = contourArea(contours.at(i));
             //cout << "area:" << area << endl;
-            if (area > 400 || area < 30) {
+            if (area > 400 || area < 7) {
+#ifdef DRAW
                 drawContours(bin, contours, i, Scalar(50), CV_FILLED);
+#endif
                 continue;
             }
             RotatedRect rec = minAreaRect(contours.at(i));
@@ -98,18 +152,20 @@ public:
             float b = size.height < size.width
                 ? size.height
                 : size.width;
-            if (a < 10) {
+            if (a < 8) {
                 continue;
             }
             //cout << "a / b: " << a / b << endl;
             if (a / b > 10 || a / b < 2.5) {
+#ifdef DRAW
                 drawContours(bin, contours, i, Scalar(100), CV_FILLED);
+#endif
                 continue;
             }
             lights.push_back(rec);
         }
         if (lights.size() < 2)
-            return;
+            return false;
         int light1 = -1, light2 = -1;
         float min_angel = 3.001;
         for (unsigned int i = 0; i < lights.size(); ++i) {
@@ -137,20 +193,22 @@ public:
                 if (sizej.width < sizej.height)
                     angelj += 90.0;
                 //if (abs(angeli - angelj) > 5) {
-                    //continue;
+                //continue;
                 //}
-                cout << "i: " << angeli << " j: " << angelj << endl;
+                //cout << "i: " << angeli << " j: " << angelj << endl;
                 if (abs(angeli - angelj) < min_angel) {
                     float distance = abs((pi.x - pj.x) * cos((angeli + 90) * PI / 180)
-                            + (pi.y - pj.y) * sin((angeli + 90) * PI / 180));
+                        + (pi.y - pj.y) * sin((angeli + 90) * PI / 180));
                     //灯条距离合适
-                    cout << "distance: " << distance
-                        << " ai: " << ai
-                        << " aj: " << aj << endl;
+                    //cout << "distance: " << distance
+                    //<< " ai: " << ai
+                    //<< " aj: " << aj << endl;
                     if (distance < 2 * ai || distance > 4.5 * ai
-                            || distance < 2 * aj || distance > 4.5 * aj) {
+                        || distance < 2 * aj || distance > 4.5 * aj) {
+#ifdef DRAW
                         drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                         drawContours(bin, contours, j, Scalar(150), CV_FILLED);
+#endif
                         continue;
                     }
                     light1 = i;
@@ -160,7 +218,7 @@ public:
             }
         }
         if (light1 == -1 || light2 == -1 || min_angel == 5.001)
-            return;
+            return false;
         //cout << "min i:" << light1 << " j:" << light2 << " angel:" << min_angel << endl;
         Rect2d reci = lights.at(light1).boundingRect();
         Rect2d recj = lights.at(light2).boundingRect();
@@ -179,67 +237,67 @@ public:
             min_y = recj.y;
             max_y = reci.y + reci.height;
         }
-        min_x -= 5;
-        max_x += 5;
-        min_y -= 5;
-        max_y += 5;
-        if (min_x < 0)
-            min_x = 1;
-        if (max_x > frame.size().width)
-            max_x = frame.size().width - 1;
-        if (min_y < 0)
-            min_y = 1;
-        if (max_y > frame.size().height)
-            max_y = frame.size().height - 1;
+        min_x -= BOX_EXTRA;
+        max_x += BOX_EXTRA;
+        min_y -= BOX_EXTRA;
+        max_y += BOX_EXTRA;
+        if (min_x < 0 || max_x > srcW || min_y < 0 || max_y > srcH) {
+            return false;
+        }
         bbox = Rect2d(min_x, min_y,
-                max_x - min_x, max_y - min_y);
+            max_x - min_x, max_y - min_y);
+#ifdef DRAW
         rectangle(bin, bbox, Scalar(255), 3);
-        //state = TRACK_INIT;
         imshow("gray", bin);
         int k = waitKey(1);
         if (k == 27)
             waitKey(0);
+#endif
+        return true;
     }
 
     void trackInit(Mat& frame)
     {
         tracker = TrackerKCF::create();
-
+#ifdef DRAW
         // Display bounding box.
         rectangle(frame, bbox, Scalar(255, 0, 0), 2, 1);
         imshow("Tracking", frame);
+#endif
         tracker->init(frame, bbox);
-        state = TRACK;
     }
 
-    void track(Mat& frame)
+    bool track(Mat& frame)
     {
         // Update the tracking result
+        // threshold(frame, frame, 230, 255, THRESH_BINARY);
         bool ok = tracker->update(frame, bbox);
+        if (bbox.x < 10 || bbox.y < 10
+                || bbox.x + bbox.width > 630
+                || bbox.y + bbox.height > 470) {
+            ok = false;
+        }
 
         if (ok) {
+#ifdef DRAW
             // Tracking success : Draw the tracked object
             rectangle(frame, bbox, Scalar(255, 0, 0), 2, 1);
+#endif
 
             // send
-            serial.sendTarget((bbox.x + bbox.width / 2) * 2, (bbox.y + bbox.height / 2) * 2, ok);
             float fps = 1 / (tic() - timer);
             cout << "fps: " << fps << endl;
             timer = tic();
+#ifdef DRAW
+            // Display frame.
+            imshow("Tracking", frame);
+            int k = waitKey(1);
+            if (k == 27)
+                waitKey(0);
+#endif
+            return true;
         } else {
-            // Tracking failure detected.
-            serial.sendTarget(320, 240, ok);
-            state = EXPLORE;
-            return;
-        }
-
-        // Display frame.
-        imshow("Tracking", frame);
-
-        // Exit if ESC pressed.
-        int k = waitKey(1);
-        if (k == 27) {
-            return;
+            return false;
         }
     }
 };
@@ -252,7 +310,7 @@ int main(int argc, char** argv)
 #if VIDEO == VIDEO_FILE
     VideoCapture video;
 #endif
-    // Read video
+// Read video
 #if VIDEO == VIDEO_CAMERA
     if (video.init() == 0) {
         cout << "Global Shutter Camera Init successfully!" << endl;
