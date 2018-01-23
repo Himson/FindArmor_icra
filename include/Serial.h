@@ -20,14 +20,16 @@
 using namespace std;
 class Serial {
 private:
+#if PLATFORM == MANIFOLD
     int fd;
+#endif
 
 private:
     int set_opt(int, int, int, char, int);
 
 public:
     void init();
-    void sendTarget(int, int, bool);
+    void sendTarget(int, int, int);
 };
 
 int Serial::set_opt(int fd, int nSpeed, int nBits, char nEvent, int nStop)
@@ -111,7 +113,7 @@ void Serial::init()
 #endif
 }
 
-void Serial::sendTarget(int target_x, int target_y, bool is_found)
+void Serial::sendTarget(int target_x, int target_y, int is_found)
 {
 
 #if PLATFORM == MANIFOLD
@@ -128,25 +130,28 @@ void Serial::sendTarget(int target_x, int target_y, bool is_found)
 #endif
     //int converted_x = int(target_x * (18000.0 / 640));
     //int converted_y = int((480 - target_y) * (10000.0 / 480));
-static int last_x;
-    int converted_x = 2 * target_x - last_x;
-//int converted_x = target_x;
-if (converted_x > 640 || converted_x < 0)
-	converted_x = target_x;
-    int converted_y = target_y;
-last_x = target_x;
-    cout << dec << "x:" << converted_x << " y:" << converted_y << endl;
+    if (target_x < 0 || target_x > 640 || target_y < 0 || target_y > 480) {
+        is_found = 0;
+        target_x = 320;
+        target_y = 240;
+    }
+    cout << dec << "x:" << target_x << " y:" << target_y << endl;
 
     char buf[7];
     buf[0] = 0xA5;
-    buf[1] = (converted_x >> 8) & 0xFF;
-    buf[2] = converted_x & 0xFF;
-    if (is_found)
+    buf[1] = (target_x >> 8) & 0xFF;
+    buf[2] = target_x & 0xFF;
+    if (is_found == 2) {
+        buf[3] = 0xA8;
+    }
+    else if (is_found == 1)
+    {
         buf[3] = 0xA6;
-    else
+    } else {
         buf[3] = 0xA4;
-    buf[4] = (converted_y >> 8) & 0xFF;
-    buf[5] = converted_y & 0xFF;
+    }
+    buf[4] = (target_y >> 8) & 0xFF;
+    buf[5] = target_y & 0xFF;
     buf[6] = 0xA7;
     for (int i = 0; i < 7; ++i) {
         cout << hex << (unsigned int)(unsigned char)buf[i] << " ";
@@ -154,11 +159,13 @@ last_x = target_x;
     cout << endl;
 
 #if PLATFORM == MANIFOLD
+    //串口发送buf的前40字节
+    //n = write(fd, buf, 7);
+    write(fd, buf, 7);
     //读串口30字节到buf
     char receive[50] = { 0 };
-    int n = read(fd, receive, 50);
+    //int n = read(fd, receive, 50);
+    read(fd, receive, 50);
     cout << "Receive:" << receive << endl;
-    //串口发送buf的前40字节
-    n = write(fd, buf, 7);
 #endif
 };

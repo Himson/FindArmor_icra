@@ -33,6 +33,7 @@ private:
         TRACK
     } state;
     Rect2d bbox;
+    Rect2d bbox_last;
     Serial serial;
     double timer;
     Ptr<Tracker> tracker;
@@ -81,13 +82,16 @@ public:
                 found_ctr = 0;
             }
 
-            if (found_ctr > 1) {
-                serial.sendTarget((bbox.x + bbox.width / 2) * 1, (bbox.y + bbox.height / 2) * 1, true);
+            if (found_ctr > 2) {
+                serial.sendTarget((bbox.x + bbox.width / 2), (bbox.y + bbox.height / 2), 1);
                 transferState(TRACK_INIT);
                 found_ctr = 0;
+                unfound_ctr = 0;
+                bbox_last = bbox;
             }
             if (unfound_ctr > 5) {
-                serial.sendTarget(320, 240, false);
+                serial.sendTarget(320, 240, 0);
+                found_ctr = 0;
                 unfound_ctr = 0;
             }
         } else if (state == TRACK_INIT) {
@@ -95,10 +99,24 @@ public:
             transferState(TRACK);
         } else if (state == TRACK) {
             if (track(frame)) {
-                serial.sendTarget((bbox.x + bbox.width / 2) * 1, (bbox.y + bbox.height / 2) * 1, true);
+                int x = bbox.x + bbox.width / 2;
+                int y = bbox.y + bbox.height / 2;
+                int x_last = bbox_last.x + bbox_last.width / 2;
+                int y_last = bbox_last.y + bbox_last.height / 2;
+                int center_x = 2 * x - srcW / 2;
+                int center_y = 2 * y - srcH / 2;
+                if (bbox_last.x < center_x && center_x < bbox_last.x + bbox_last.width
+                        && bbox_last.y < center_y && center_y < bbox_last.y + bbox_last.height) {
+                    serial.sendTarget(2 * x - x_last, 2 * y - y_last, 2);
+                } else {
+                    serial.sendTarget(2 * x - x_last, 2 * y - y_last, 1);
+                }
                 ++found_ctr;
+                unfound_ctr = 0;
+                bbox_last = bbox;
             } else {
-                transferState(EXPLORE);
+                //transferState(EXPLORE);
+                ++unfound_ctr;
                 found_ctr = 0;
             }
             if (found_ctr > 100) {
@@ -107,9 +125,15 @@ public:
                 //imshow("roi", roi);
                 //cout << roi.size() << endl;
                 //cout << endl << dec << "no zero: " << countNonZero(roi) - 4 * (roi.cols + roi.rows)<< endl;
-                if (countNonZero(roi) - 4 * (roi.cols + roi.rows) < 50) {
+                if (countNonZero(roi) - 4 * (roi.cols + roi.rows) < 60) {
                     transferState(EXPLORE);
                 }
+                found_ctr = 0;
+                unfound_ctr = 0;
+            }
+            if (unfound_ctr > 1) {
+                transferState(EXPLORE);
+                unfound_ctr = 0;
                 found_ctr = 0;
             }
         }
@@ -129,7 +153,7 @@ private:
     bool explore(Mat& frame)
     {
         static Mat bin;
-        threshold(frame, bin, 240, 255, THRESH_BINARY);
+        threshold(frame, bin, 235, 255, THRESH_BINARY);
 #ifdef DRAW
         imshow("gray", bin);
 #endif
@@ -140,7 +164,7 @@ private:
         for (unsigned int i = 0; i < contours.size(); ++i) {
             int area = contourArea(contours.at(i));
             //cout << "area:" << area << endl;
-            if (area > 400 || area < 7) {
+            if (area > 2000 || area < 20) {
 #ifdef DRAW
                 drawContours(bin, contours, i, Scalar(50), CV_FILLED);
 #endif
@@ -154,11 +178,11 @@ private:
             float b = size.height < size.width
                 ? size.height
                 : size.width;
-            if (a < 8) {
+            if (a < 20) {
                 continue;
             }
             //cout << "a / b: " << a / b << endl;
-            if (a / b > 10 || a / b < 2.5) {
+            if (a / b > 15 || a / b < 2.5) {
 #ifdef DRAW
                 drawContours(bin, contours, i, Scalar(100), CV_FILLED);
 #endif
@@ -169,7 +193,7 @@ private:
         if (lights.size() < 2)
             return false;
         int light1 = -1, light2 = -1;
-        float min_angel = 3.001;
+        float min_angel = 5.001;
         for (unsigned int i = 0; i < lights.size(); ++i) {
             for (unsigned int j = i + 1; j < lights.size(); ++j) {
                 Point2f pi = lights.at(i).center;
@@ -184,7 +208,7 @@ private:
                 float aj = sizej.height > sizej.width
                     ? sizej.height
                     : sizej.width;
-                if (ai / aj > 1.3 || ai / aj < 0.7)
+                if (ai / aj > 1.2 || aj / ai > 1.2)
                     continue;
 
                 //灯条中点连线与灯条夹角合适
@@ -205,8 +229,10 @@ private:
                     //cout << "distance: " << distance
                     //<< " ai: " << ai
                     //<< " aj: " << aj << endl;
-                    if (distance_n < 2 * ai || distance_n > 4.5 * ai
-                        || distance_n < 2 * aj || distance_n > 4.5 * aj) {
+                    if (distance_n < 1.7 * ai || (distance_n > 2.5 * ai && distance_n < 3.7 * ai)
+                            || distance_n > 4.5 * aj
+                            || distance_n < 1.7 * aj || (distance_n > 2.5 * aj && distance_n < 3.7 * aj)
+                            || distance_n > 4.5 * aj) {
 #ifdef DRAW
                         drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                         drawContours(bin, contours, j, Scalar(150), CV_FILLED);
