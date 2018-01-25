@@ -8,7 +8,7 @@ endif(COMMAND cmake_policy)
 FIND_PACKAGE( OpenCV 3 REQUIRED )
 # OpenMP
 FIND_PACKAGE( OpenMP)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -pthread")
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 SET(OpenMP_FLAGS ${OpenMP_CXX_FLAGS})
 SET(OpenMP_LIBS gomp)
@@ -17,23 +17,11 @@ SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
 SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
 # Declare the target (an executable)
 include_directories( ${PROJECT_SOURCE_DIR}/include)
+include_directories( ${PROJECT_SOURCE_DIR}/src) 
+FILE(GLOB_RECURSE sourcefiles "src/*.cpp")
 ADD_EXECUTABLE(FindArmor  
     main.cpp
-    src/augmented_unscented_kalman.cpp
-    src/feature.cpp
-    src/featureColorName.cpp
-    src/PFSolver.hpp
-    src/precomp.hpp
-    src/tracker.cpp
-    src/trackerFeature.cpp
-    src/trackerFeatureSet.cpp
-    src/trackerKCF.cpp
-    src/trackerModel.cpp
-    src/trackerSampler.cpp
-    src/trackerSamplerAlgorithm.cpp
-    src/trackerStateEstimator.cpp
-    src/TrackingFunctionPF.hpp
-    src/unscented_kalman.cpp
+    ${sourcefiles}
   )
 TARGET_COMPILE_OPTIONS(FindArmor PRIVATE ${OpenMP_FLAGS})
 TARGET_LINK_LIBRARIES(FindArmor ${OpenCV_LIBS} ${OpenMP_LIBS} /lib/libMVSDK.so)

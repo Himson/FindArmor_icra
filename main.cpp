@@ -1,19 +1,20 @@
 #include "GlobalCamera.h"
 #include "Serial.h"
-//#include <omp.h>
-#include <opencv2/core/ocl.hpp>
-#include <opencv2/opencv.hpp>
-#include <opencv2/tracking/tracker.hpp>
+#include <omp.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include "kcftracker.hpp"
 #include <stdlib.h>
 #include <sys/time.h>
 
 #define VIDEO_FILE 0
 #define VIDEO_CAMERA 1
-#define VIDEO VIDEO_CAMERA
+#define VIDEO VIDEO_FILE
 
 #define PI 3.14159265358979323
 
-#define DRAW 1
+//#define DRAW 1
 
 using namespace cv;
 using namespace std;
@@ -34,9 +35,9 @@ private:
     } state;
     Rect2d bbox;
     Rect2d bbox_last;
+    KCFTracker tracker;
     Serial serial;
     double timer;
-    Ptr<Tracker> tracker;
     long found_ctr;
     long unfound_ctr;
 
@@ -44,7 +45,13 @@ private:
     int BORDER_IGNORE;
     int BOX_EXTRA;
 
+    long total_contour_area;
+
 public:
+    Armor():
+        tracker(false, true, false, false)
+    {};
+
     void init()
     {
         // init serial
@@ -98,7 +105,12 @@ public:
             trackInit(frame);
             transferState(TRACK);
         } else if (state == TRACK) {
-            if (track(frame)) {
+            if (track(frame)) 
+            {
+                float fps = 1 / (tic() - timer);
+                cout << "fps: " << fps << endl;
+                timer = tic();
+
                 int x = bbox.x + bbox.width / 2;
                 int y = bbox.y + bbox.height / 2;
                 int x_last = bbox_last.x + bbox_last.width / 2;
@@ -119,28 +131,28 @@ public:
                 ++unfound_ctr;
                 found_ctr = 0;
             }
-            if (found_ctr > 100) {
+            if (found_ctr > 3) 
+            {
                 Mat roi = frame(bbox);
                 threshold(roi, roi, 240, 255, THRESH_BINARY);
-                //imshow("roi", roi);
-                //cout << roi.size() << endl;
-                //cout << endl << dec << "no zero: " << countNonZero(roi) - 4 * (roi.cols + roi.rows)<< endl;
-                if (countNonZero(roi) - 4 * (roi.cols + roi.rows) < 60) {
+                if (countNonZero(roi) < 0.4 *  total_contour_area) {
                     transferState(EXPLORE);
+                    found_ctr = 0;
+                    unfound_ctr = 0;
                 }
-                found_ctr = 0;
-                unfound_ctr = 0;
             }
-            if (unfound_ctr > 1) {
+            if (unfound_ctr > 2) {
                 transferState(EXPLORE);
                 unfound_ctr = 0;
                 found_ctr = 0;
             }
-        }
-
 #ifdef DRAW
-        waitKey(1);
+            // Tracking success : Draw the tracked object
+            rectangle(frame, bbox, Scalar(255, 0, 0), 2, 1);
+            // Display frame.
+            imshow("Tracking", frame);
 #endif
+        }
         return 0;
     }
 
@@ -159,10 +171,11 @@ private:
 #endif
         vector<vector<Point> > contours;
         vector<RotatedRect> lights;
+        vector<long> areas;
         findContours(bin, contours,
             CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
         for (unsigned int i = 0; i < contours.size(); ++i) {
-            int area = contourArea(contours.at(i));
+            long area = contourArea(contours.at(i));
             //cout << "area:" << area << endl;
             if (area > 2000 || area < 20) {
 #ifdef DRAW
@@ -189,6 +202,7 @@ private:
                 continue;
             }
             lights.push_back(rec);
+            areas.push_back(area);
         }
         if (lights.size() < 2)
             return false;
@@ -229,10 +243,8 @@ private:
                     //cout << "distance: " << distance
                     //<< " ai: " << ai
                     //<< " aj: " << aj << endl;
-                    if (distance_n < 1.7 * ai || (distance_n > 2.5 * ai && distance_n < 3.7 * ai)
-                            || distance_n > 4.5 * aj
-                            || distance_n < 1.7 * aj || (distance_n > 2.5 * aj && distance_n < 3.7 * aj)
-                            || distance_n > 4.5 * aj) {
+                    if (distance_n < 1.7 * ai || distance_n > 3.8 * ai
+                            || distance_n < 1.7 * aj || distance_n > 3.8 * aj) {
 #ifdef DRAW
                         drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                         drawContours(bin, contours, j, Scalar(150), CV_FILLED);
@@ -245,7 +257,7 @@ private:
                     //cout << "distance: " << distance
                     //<< " ai: " << ai
                     //<< " aj: " << aj << endl;
-                    if (distance_t > 1.5 * ai || distance_t > 1.5 * aj) {
+                    if (distance_t > 1.4 * ai || distance_t > 1.4 * aj) {
 #ifdef DRAW
                         drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                         drawContours(bin, contours, j, Scalar(150), CV_FILLED);
@@ -287,59 +299,39 @@ private:
         }
         bbox = Rect2d(min_x, min_y,
             max_x - min_x, max_y - min_y);
+        total_contour_area = areas.at(light1) + areas.at(light2);
 #ifdef DRAW
         rectangle(bin, bbox, Scalar(255), 3);
         imshow("gray", bin);
-        int k = waitKey(1);
-        if (k == 27)
-            waitKey(0);
+        //int k = waitKey(1);
+        //if (k == 27)
+            //waitKey(0);
 #endif
         return true;
     }
 
     void trackInit(Mat& frame)
     {
-        tracker = TrackerKCF::create();
+        //tracker = TrackerKCF::create();
 #ifdef DRAW
         // Display bounding box.
         rectangle(frame, bbox, Scalar(255, 0, 0), 2, 1);
-        imshow("Tracking", frame);
+        imshow("TrackInit", frame);
 #endif
-        tracker->init(frame, bbox);
+        tracker.init(bbox, frame);
     }
 
     bool track(Mat& frame)
     {
         // Update the tracking result
-        // threshold(frame, frame, 230, 255, THRESH_BINARY);
-        bool ok = tracker->update(frame, bbox);
+        bool ok = true;
+        bbox = tracker.update(frame);
         if (bbox.x < 10 || bbox.y < 10
                 || bbox.x + bbox.width > 630
                 || bbox.y + bbox.height > 470) {
             ok = false;
         }
-
-        if (ok) {
-#ifdef DRAW
-            // Tracking success : Draw the tracked object
-            rectangle(frame, bbox, Scalar(255, 0, 0), 2, 1);
-#endif
-
-            // send
-            float fps = 1 / (tic() - timer);
-            cout << "fps: " << fps << endl;
-            timer = tic();
-#ifdef DRAW
-            // Display frame.
-            imshow("Tracking", frame);
-            int k = waitKey(1);
-            if (k == 27)
-                waitKey(0);
-#endif
-            return true;
-        } else {
-            return false;
-        }
+        return ok;
     }
 };
 
@@ -372,13 +364,56 @@ int main(int argc, char** argv)
     Armor armor;
     armor.init();
 
-    Mat frame;
+    Mat frame1, frame2, frame;
+    bool ok = true;
 
-    while (1) {
-        video.read(frame);
-        if (armor.run(frame) < 0) {
-            cout << "Error!" << endl;
-            return -1;
+    video.read(frame2);
+    while (ok) {
+#pragma omp parallel sections num_threads(2)
+        {
+#pragma omp section
+            {
+                video.read(frame1);
+                //cout << "read 1" << endl;
+            }
+#pragma omp section
+            {
+                if (armor.run(frame2) < 0)
+                //armor.run(frame2);
+                {
+                    cout << "Error!" << endl;
+                    ok = false;
+                }
+                //cout << "process 2" << endl;
+            }
         }
+
+#pragma omp barrier
+
+#ifdef DRAW
+            waitKey(1);
+#endif
+
+#pragma omp parallel sections num_threads(2)
+        {
+#pragma omp section
+            {
+                video.read(frame2);
+                //cout << "read 2" << endl;
+            }
+#pragma omp section
+            {
+                if (armor.run(frame1) < 0)
+                {
+                    cout << "Error!" << endl;
+                    ok = false;
+                }
+                //cout << "process 1" << endl;
+            }
+        }
+#pragma omp barrier
+#ifdef DRAW
+            waitKey(1);
+#endif
     }
 }
