@@ -119,15 +119,14 @@ public:
                 int center_y = 2 * y - srcH / 2;
                 if (bbox_last.x < center_x && center_x < bbox_last.x + bbox_last.width
                         && bbox_last.y < center_y && center_y < bbox_last.y + bbox_last.height) {
-                    serial.sendTarget(2 * x - x_last, 2 * y - y_last, 2);
+                    serial.sendTarget(2 * x - x_last, y, 2);
                 } else {
-                    serial.sendTarget(2 * x - x_last, 2 * y - y_last, 1);
+                    serial.sendTarget(x, y, 1);
                 }
                 ++found_ctr;
                 unfound_ctr = 0;
                 bbox_last = bbox;
             } else {
-                //transferState(EXPLORE);
                 ++unfound_ctr;
                 found_ctr = 0;
             }
@@ -303,16 +302,12 @@ private:
 #ifdef DRAW
         rectangle(bin, bbox, Scalar(255), 3);
         imshow("gray", bin);
-        //int k = waitKey(1);
-        //if (k == 27)
-            //waitKey(0);
 #endif
         return true;
     }
 
     void trackInit(Mat& frame)
     {
-        //tracker = TrackerKCF::create();
 #ifdef DRAW
         // Display bounding box.
         rectangle(frame, bbox, Scalar(255, 0, 0), 2, 1);
@@ -374,17 +369,14 @@ int main(int argc, char** argv)
 #pragma omp section
             {
                 video.read(frame1);
-                //cout << "read 1" << endl;
             }
 #pragma omp section
             {
                 if (armor.run(frame2) < 0)
-                //armor.run(frame2);
                 {
                     cout << "Error!" << endl;
                     ok = false;
                 }
-                //cout << "process 2" << endl;
             }
         }
 
@@ -399,7 +391,6 @@ int main(int argc, char** argv)
 #pragma omp section
             {
                 video.read(frame2);
-                //cout << "read 2" << endl;
             }
 #pragma omp section
             {
@@ -408,7 +399,6 @@ int main(int argc, char** argv)
                     cout << "Error!" << endl;
                     ok = false;
                 }
-                //cout << "process 1" << endl;
             }
         }
 #pragma omp barrier
