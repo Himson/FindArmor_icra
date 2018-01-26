@@ -1,5 +1,5 @@
-#include "GlobalCamera.h"
 #include "Armor.h"
+#include "GlobalCamera.h"
 #include <iostream>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -26,7 +26,7 @@ int main(void)
 #if VIDEO == VIDEO_FILE
     VideoCapture video;
 #endif
-    // Read video
+// Read video
 #if VIDEO == VIDEO_CAMERA
     if (video.init() == 0) {
         cout << "Global Shutter Camera Init successfully!" << endl;
@@ -89,7 +89,7 @@ int main(void)
 
 #else
     Mat frame;
-    while(video.read(frame)) {
+    while (video.read(frame)) {
         armor.run(frame);
     }
     cout << "End!" << endl;

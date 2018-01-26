@@ -105,8 +105,8 @@ bool GlobalCamera::read(Mat& src)
 #if 0
             cvShowImage("OpenCV Demo",iplImage);
 #else
-        //Mat Iimag(iplImage); //这里只是进行指针转换，将IplImage转换成Mat类型
-        //imshow("OpenCV Demo", Iimag);
+//Mat Iimag(iplImage); //这里只是进行指针转换，将IplImage转换成Mat类型
+//imshow("OpenCV Demo", Iimag);
 #endif
 
         //waitKey(5);
@@ -120,9 +120,9 @@ bool GlobalCamera::read(Mat& src)
     }
 }
 
-GlobalCamera::~GlobalCamera() {
+GlobalCamera::~GlobalCamera()
+{
     CameraUnInit(hCamera);
     //注意，现反初始化后再free
     free(g_pRgbBuffer);
 }
-

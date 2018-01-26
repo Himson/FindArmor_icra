@@ -17,12 +17,33 @@ void Armor::init()
     timer = tic();
     // state machine
     state = EXPLORE;
+
     found_ctr = 0;
     unfound_ctr = 0;
+
     srcW = 640;
     srcH = 480;
+
+    // track
     BORDER_IGNORE = 10;
     BOX_EXTRA = 10;
+
+    GRAY_THRESH = 235;
+
+    // select contours
+    CONTOUR_AREA_MIN = 20;
+    CONTOUR_AREA_MAX = 2000;
+    CONTOUR_LENGTH_MIN = 20;
+    CONTOUR_HW_RATIO_MIN = 2.5;
+    CONTOUR_HW_RATIO_MAX = 15;
+
+    // pair lights
+    TWIN_ANGEL_MAX = 5.001;
+    TWIN_LENGTH_RATIO_MAX = 1.2;
+    TWIN_DISTANCE_N_MIN = 1.7;
+    TWIN_DISTANCE_N_MAX = 3.8;
+    TWIN_DISTANCE_T_MAX = 1.4;
+
 }
 
 int Armor::run(Mat& frame)
@@ -47,14 +68,14 @@ int Armor::run(Mat& frame)
         }
 
         if (found_ctr > 2) {
-            serial.sendTarget((bbox.x + bbox.width / 2), (bbox.y + bbox.height / 2), 1);
+            serial.sendTarget((bbox.x + bbox.width / 2), (bbox.y + bbox.height / 2), FOUND_BORDER);
             transferState(TRACK_INIT);
             found_ctr = 0;
             unfound_ctr = 0;
             bbox_last = bbox;
         }
         if (unfound_ctr > 5) {
-            serial.sendTarget(320, 240, 0);
+            serial.sendTarget(srcW / 2, srcH / 2, NOT_FOUND);
             found_ctr = 0;
             unfound_ctr = 0;
         }
@@ -75,9 +96,9 @@ int Armor::run(Mat& frame)
             int center_y = 2 * y - srcH / 2;
             if (bbox_last.x < center_x && center_x < bbox_last.x + bbox_last.width
                 && bbox_last.y < center_y && center_y < bbox_last.y + bbox_last.height) {
-                serial.sendTarget(2 * x - x_last, y, 2);
+                serial.sendTarget(2 * x - x_last, y, FOUND_CENTER);
             } else {
-                serial.sendTarget(x, y, 1);
+                serial.sendTarget(x, y, FOUND_BORDER);
             }
             ++found_ctr;
             unfound_ctr = 0;
@@ -89,7 +110,7 @@ int Armor::run(Mat& frame)
 
         if (found_ctr > 3) {
             Mat roi = frame(bbox);
-            threshold(roi, roi, 240, 255, THRESH_BINARY);
+            threshold(roi, roi, GRAY_THRESH, 255, THRESH_BINARY);
             if (countNonZero(roi) < 0.4 * total_contour_area) {
                 transferState(EXPLORE);
                 found_ctr = 0;
@@ -132,9 +153,9 @@ bool Armor::track(Mat& frame)
     // Update the tracking result
     bool ok = true;
     bbox = tracker.update(frame);
-    if (bbox.x < 10 || bbox.y < 10
-        || bbox.x + bbox.width > 630
-        || bbox.y + bbox.height > 470) {
+    if (bbox.x < BORDER_IGNORE || bbox.y < BORDER_IGNORE
+        || bbox.x + bbox.width > srcW - BORDER_IGNORE
+        || bbox.y + bbox.height > srcH - BORDER_IGNORE) {
         ok = false;
     }
     return ok;
@@ -143,7 +164,7 @@ bool Armor::track(Mat& frame)
 bool Armor::explore(Mat& frame)
 {
     static Mat bin;
-    threshold(frame, bin, 235, 255, THRESH_BINARY);
+    threshold(frame, bin, GRAY_THRESH, 255, THRESH_BINARY);
 #ifdef DRAW
     imshow("gray", bin);
 #endif
@@ -155,7 +176,7 @@ bool Armor::explore(Mat& frame)
     for (unsigned int i = 0; i < contours.size(); ++i) {
         long area = contourArea(contours.at(i));
         //cout << "area:" << area << endl;
-        if (area > 2000 || area < 20) {
+        if (area > CONTOUR_AREA_MAX || area < CONTOUR_AREA_MIN) {
 #ifdef DRAW
             drawContours(bin, contours, i, Scalar(50), CV_FILLED);
 #endif
@@ -169,11 +190,11 @@ bool Armor::explore(Mat& frame)
         float b = size.height < size.width
             ? size.height
             : size.width;
-        if (a < 20) {
+        if (a < CONTOUR_LENGTH_MIN) {
             continue;
         }
         //cout << "a / b: " << a / b << endl;
-        if (a / b > 15 || a / b < 2.5) {
+        if (a / b > CONTOUR_HW_RATIO_MAX || a / b < CONTOUR_HW_RATIO_MIN) {
 #ifdef DRAW
             drawContours(bin, contours, i, Scalar(100), CV_FILLED);
 #endif
@@ -185,7 +206,7 @@ bool Armor::explore(Mat& frame)
     if (lights.size() < 2)
         return false;
     int light1 = -1, light2 = -1;
-    float min_angel = 5.001;
+    float min_angel = TWIN_ANGEL_MAX;
     for (unsigned int i = 0; i < lights.size(); ++i) {
         for (unsigned int j = i + 1; j < lights.size(); ++j) {
             Point2f pi = lights.at(i).center;
@@ -200,7 +221,7 @@ bool Armor::explore(Mat& frame)
             float aj = sizej.height > sizej.width
                 ? sizej.height
                 : sizej.width;
-            if (ai / aj > 1.2 || aj / ai > 1.2)
+            if (ai / aj > TWIN_LENGTH_RATIO_MAX || aj / ai > TWIN_LENGTH_RATIO_MAX)
                 continue;
 
             //灯条中点连线与灯条夹角合适
@@ -221,8 +242,8 @@ bool Armor::explore(Mat& frame)
                 //cout << "distance: " << distance
                 //<< " ai: " << ai
                 //<< " aj: " << aj << endl;
-                if (distance_n < 1.7 * ai || distance_n > 3.8 * ai
-                    || distance_n < 1.7 * aj || distance_n > 3.8 * aj) {
+                if (distance_n < TWIN_DISTANCE_N_MIN * ai || distance_n > TWIN_DISTANCE_N_MAX * ai
+                    || distance_n < TWIN_DISTANCE_N_MIN* aj || distance_n > TWIN_DISTANCE_N_MAX * aj) {
 #ifdef DRAW
                     drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                     drawContours(bin, contours, j, Scalar(150), CV_FILLED);
@@ -235,7 +256,7 @@ bool Armor::explore(Mat& frame)
                 //cout << "distance: " << distance
                 //<< " ai: " << ai
                 //<< " aj: " << aj << endl;
-                if (distance_t > 1.4 * ai || distance_t > 1.4 * aj) {
+                if (distance_t > TWIN_DISTANCE_T_MAX * ai || distance_t > TWIN_DISTANCE_T_MAX * aj) {
 #ifdef DRAW
                     drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                     drawContours(bin, contours, j, Scalar(150), CV_FILLED);
@@ -248,7 +269,7 @@ bool Armor::explore(Mat& frame)
             }
         }
     }
-    if (light1 == -1 || light2 == -1 || min_angel == 5.001)
+    if (light1 == -1 || light2 == -1 || min_angel == TWIN_ANGEL_MAX)
         return false;
     //cout << "min i:" << light1 << " j:" << light2 << " angel:" << min_angel << endl;
     Rect2d reci = lights.at(light1).boundingRect();

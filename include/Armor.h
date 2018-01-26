@@ -12,6 +12,10 @@
 #define DRAW 1
 #endif
 
+#define NOT_FOUND 0
+#define FOUND_BORDER 1
+#define FOUND_CENTER 2
+
 using namespace cv;
 using namespace std;
 
@@ -33,6 +37,17 @@ private:
     int srcW, srcH;
     int BORDER_IGNORE;
     int BOX_EXTRA;
+    int GRAY_THRESH;
+    long CONTOUR_AREA_MAX;
+    long CONTOUR_AREA_MIN;
+    int CONTOUR_LENGTH_MIN;
+    float CONTOUR_HW_RATIO_MAX;
+    float CONTOUR_HW_RATIO_MIN;
+    float TWIN_ANGEL_MAX;
+    float TWIN_LENGTH_RATIO_MAX;
+    float TWIN_DISTANCE_N_MIN;
+    float TWIN_DISTANCE_N_MAX;
+    float TWIN_DISTANCE_T_MAX;
 
     long total_contour_area;
 
