@@ -1,19 +1,11 @@
 #include "Armor.h"
 #include "GlobalCamera.h"
+#include "precom.h"
+
 #include <iostream>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-
-#define VIDEO_FILE 0
-#define VIDEO_CAMERA 1
-
-#if PLATFORM == PC
-#define VIDEO VIDEO_FILE
-#elif PLATFORM == MANIFOLD
-#define VIDEO VIDEO_CAMERA
-#define OPENMP_SWITCH 1
-#endif
 
 using namespace cv;
 using namespace std;

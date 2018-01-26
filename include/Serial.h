@@ -9,14 +9,8 @@
 #include <termios.h>
 #include <unistd.h>
 
-#define MANIFOLD 1
-#define PC 0
-//#if defined (__amd64__) || ( __amd64) ||(__x86_64__) || (__x86_64) ||(i386) ||(__i386) ||(__i386__)
-#if defined __arm__
-#define PLATFORM MANIFOLD
-#else
-#define PLATFORM PC
-#endif
+#include "precom.h"
+
 using namespace std;
 class Serial {
 private:

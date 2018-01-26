@@ -1,16 +1,13 @@
 #include "Serial.h"
 #include "kcftracker.hpp"
+#include "precom.h"
+
 #include <iostream>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <stdlib.h>
 #include <sys/time.h>
-
-#define PI 3.14159265358979323
-#if PLATFORM == PC
-#define DRAW 1
-#endif
 
 #define NOT_FOUND 0
 #define FOUND_BORDER 1
