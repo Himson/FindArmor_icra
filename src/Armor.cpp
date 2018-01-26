@@ -13,8 +13,10 @@ void Armor::init()
 {
     // init serial
     serial.init();
+
     // fps
     timer = tic();
+
     // state machine
     state = EXPLORE;
 
@@ -44,6 +46,12 @@ void Armor::init()
     TWIN_DISTANCE_N_MAX = 3.8;
     TWIN_DISTANCE_T_MAX = 1.4;
 
+    // state machine
+    EXPLORE_TRACK_THRES = 2;
+    EXPLORE_SEND_STOP_THRES = 5;
+    TRACK_CHECK_THRES = 3;
+    TRACK_CHECK_RATIO = 0.4;
+    TRACK_EXPLORE_THRES = 2;
 }
 
 int Armor::run(Mat& frame)
@@ -57,7 +65,6 @@ int Armor::run(Mat& frame)
     imshow("frame", frame);
 #endif
 
-    //cout << dec << "found_ctr: " << found_ctr << endl;
     if (state == EXPLORE) {
         if (explore(frame)) {
             ++found_ctr;
@@ -67,14 +74,15 @@ int Armor::run(Mat& frame)
             found_ctr = 0;
         }
 
-        if (found_ctr > 2) {
-            serial.sendTarget((bbox.x + bbox.width / 2), (bbox.y + bbox.height / 2), FOUND_BORDER);
+        if (found_ctr >= EXPLORE_TRACK_THRES) {
+            serial.sendTarget((bbox.x + bbox.width / 2),
+                    (bbox.y + bbox.height / 2), FOUND_BORDER);
             transferState(TRACK_INIT);
             found_ctr = 0;
             unfound_ctr = 0;
             bbox_last = bbox;
         }
-        if (unfound_ctr > 5) {
+        if (unfound_ctr >= EXPLORE_SEND_STOP_THRES) {
             serial.sendTarget(srcW / 2, srcH / 2, NOT_FOUND);
             found_ctr = 0;
             unfound_ctr = 0;
@@ -94,8 +102,13 @@ int Armor::run(Mat& frame)
             //int y_last = bbox_last.y + bbox_last.height / 2;
             int center_x = 2 * x - srcW / 2;
             int center_y = 2 * y - srcH / 2;
-            if (bbox_last.x < center_x && center_x < bbox_last.x + bbox_last.width
-                && bbox_last.y < center_y && center_y < bbox_last.y + bbox_last.height) {
+            // Assume the box run at const velocity
+            // Predict if the center is still in box at next frame
+            if (bbox_last.x < center_x
+                    && center_x < bbox_last.x + bbox_last.width
+                    && bbox_last.y < center_y
+                    && center_y < bbox_last.y + bbox_last.height) {
+                // if center is in box, predict it run at const velocity
                 serial.sendTarget(2 * x - x_last, y, FOUND_CENTER);
             } else {
                 serial.sendTarget(x, y, FOUND_BORDER);
@@ -108,16 +121,18 @@ int Armor::run(Mat& frame)
             found_ctr = 0;
         }
 
-        if (found_ctr > 3) {
+        // check if the box is still track armor
+        if (found_ctr >= TRACK_CHECK_THRES) {
             Mat roi = frame(bbox);
             threshold(roi, roi, GRAY_THRESH, 255, THRESH_BINARY);
-            if (countNonZero(roi) < 0.4 * total_contour_area) {
+            if (countNonZero(roi) < TRACK_CHECK_RATIO * total_contour_area) {
                 transferState(EXPLORE);
                 found_ctr = 0;
                 unfound_ctr = 0;
             }
         }
-        if (unfound_ctr > 2) {
+        // sometimes, tracker only miss 1 frame
+        if (unfound_ctr >= TRACK_EXPLORE_THRES) {
             transferState(EXPLORE);
             unfound_ctr = 0;
             found_ctr = 0;
@@ -173,10 +188,12 @@ bool Armor::explore(Mat& frame)
     vector<long> areas;
     findContours(bin, contours,
         CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+    //select contours by area, length, width/height
     for (unsigned int i = 0; i < contours.size(); ++i) {
         long area = contourArea(contours.at(i));
         //cout << "area:" << area << endl;
-        if (area > CONTOUR_AREA_MAX || area < CONTOUR_AREA_MIN) {
+        if (area > CONTOUR_AREA_MAX
+                || area < CONTOUR_AREA_MIN) {
 #ifdef DRAW
             drawContours(bin, contours, i, Scalar(50), CV_FILLED);
 #endif
@@ -184,6 +201,7 @@ bool Armor::explore(Mat& frame)
         }
         RotatedRect rec = minAreaRect(contours.at(i));
         Size2f size = rec.size;
+        // get a (longer) as length
         float a = size.height > size.width
             ? size.height
             : size.width;
@@ -193,8 +211,10 @@ bool Armor::explore(Mat& frame)
         if (a < CONTOUR_LENGTH_MIN) {
             continue;
         }
+        //check if it is thin
         //cout << "a / b: " << a / b << endl;
-        if (a / b > CONTOUR_HW_RATIO_MAX || a / b < CONTOUR_HW_RATIO_MIN) {
+        if (a / b > CONTOUR_HW_RATIO_MAX
+                || a / b < CONTOUR_HW_RATIO_MIN) {
 #ifdef DRAW
             drawContours(bin, contours, i, Scalar(100), CV_FILLED);
 #endif
@@ -207,12 +227,11 @@ bool Armor::explore(Mat& frame)
         return false;
     int light1 = -1, light2 = -1;
     float min_angel = TWIN_ANGEL_MAX;
+    // pair lights by length, distance, angel
     for (unsigned int i = 0; i < lights.size(); ++i) {
         for (unsigned int j = i + 1; j < lights.size(); ++j) {
             Point2f pi = lights.at(i).center;
             Point2f pj = lights.at(j).center;
-            //float midx = (pi.x + pj.x) / 2;
-            //float midy = (pi.y + pj.y) / 2;
             Size2f sizei = lights.at(i).size;
             Size2f sizej = lights.at(j).size;
             float ai = sizei.height > sizei.width
@@ -221,41 +240,33 @@ bool Armor::explore(Mat& frame)
             float aj = sizej.height > sizej.width
                 ? sizej.height
                 : sizej.width;
-            if (ai / aj > TWIN_LENGTH_RATIO_MAX || aj / ai > TWIN_LENGTH_RATIO_MAX)
+            // length similar
+            if (ai / aj > TWIN_LENGTH_RATIO_MAX
+                    || aj / ai > TWIN_LENGTH_RATIO_MAX)
                 continue;
 
-            //灯条中点连线与灯条夹角合适
+            // angel parallel
             float angeli = lights.at(i).angle;
             float angelj = lights.at(j).angle;
             if (sizei.width < sizei.height)
                 angeli += 90.0;
             if (sizej.width < sizej.height)
                 angelj += 90.0;
-            //if (abs(angeli - angelj) > 5) {
-            //continue;
-            //}
-            //cout << "i: " << angeli << " j: " << angelj << endl;
             if (abs(angeli - angelj) < min_angel) {
                 float distance_n = abs((pi.x - pj.x) * cos((angeli + 90) * PI / 180)
                     + (pi.y - pj.y) * sin((angeli + 90) * PI / 180));
-                //灯条距离合适
-                //cout << "distance: " << distance
-                //<< " ai: " << ai
-                //<< " aj: " << aj << endl;
+                // normal distance range in about 1 ~ 2 times of length
                 if (distance_n < TWIN_DISTANCE_N_MIN * ai || distance_n > TWIN_DISTANCE_N_MAX * ai
-                    || distance_n < TWIN_DISTANCE_N_MIN* aj || distance_n > TWIN_DISTANCE_N_MAX * aj) {
+                    || distance_n < TWIN_DISTANCE_N_MIN * aj || distance_n > TWIN_DISTANCE_N_MAX * aj) {
 #ifdef DRAW
                     drawContours(bin, contours, i, Scalar(150), CV_FILLED);
                     drawContours(bin, contours, j, Scalar(150), CV_FILLED);
 #endif
                     continue;
                 }
+                // direction distance should be small
                 float distance_t = abs((pi.x - pj.x) * cos((angeli)*PI / 180)
                     + (pi.y - pj.y) * sin((angeli)*PI / 180));
-                //灯条距离合适
-                //cout << "distance: " << distance
-                //<< " ai: " << ai
-                //<< " aj: " << aj << endl;
                 if (distance_t > TWIN_DISTANCE_T_MAX * ai || distance_t > TWIN_DISTANCE_T_MAX * aj) {
 #ifdef DRAW
                     drawContours(bin, contours, i, Scalar(150), CV_FILLED);
@@ -272,6 +283,7 @@ bool Armor::explore(Mat& frame)
     if (light1 == -1 || light2 == -1 || min_angel == TWIN_ANGEL_MAX)
         return false;
     //cout << "min i:" << light1 << " j:" << light2 << " angel:" << min_angel << endl;
+    // get and extend box for track init
     Rect2d reci = lights.at(light1).boundingRect();
     Rect2d recj = lights.at(light2).boundingRect();
     float min_x, min_y, max_x, max_y;
