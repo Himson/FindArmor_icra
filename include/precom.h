@@ -21,5 +21,4 @@
 
 #define VIDEO VIDEO_CAMERA
 #define OPENMP_SWITCH 1
-
 #endif

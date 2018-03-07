@@ -121,7 +121,7 @@ int Armor::run(Mat& frame)
             found_ctr = 0;
         }
 
-        // check if the box is still track armor
+        // check if the box is still tracking armor
         if (found_ctr >= TRACK_CHECK_THRES) {
             Mat roi = frame(bbox);
             threshold(roi, roi, GRAY_THRESH, 255, THRESH_BINARY);

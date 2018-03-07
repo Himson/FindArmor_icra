@@ -6,6 +6,7 @@ if(COMMAND cmake_policy)
 endif(COMMAND cmake_policy)
 # OpenCV > 3 for KCF tracker
 #set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
+#SET(OpenCV_DIR ${PROJECT_SOURCE_DIR})
 FIND_PACKAGE( OpenCV 3 REQUIRED )
 # OpenMP
 FIND_PACKAGE( OpenMP)
