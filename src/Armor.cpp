@@ -1,4 +1,7 @@
 #include "Armor.h"
+#define _SIZE_ 100000*sizeof(char)
+#define _PATH_ "/home/li/test4/fifo"
+
 double tic()
 {
     struct timeval t;
@@ -12,7 +15,7 @@ Armor::Armor()
 void Armor::init()
 {
     // init serial
-    serial.init();
+    //serial.init();
 
     // fps
     timer = tic();
@@ -75,7 +78,7 @@ int Armor::run(Mat& frame)
         }
 
         if (found_ctr >= EXPLORE_TRACK_THRES) {
-            serial.sendTarget((bbox.x + bbox.width / 2),
+            sendTarget((bbox.x + bbox.width / 2),
                     (bbox.y + bbox.height / 2), FOUND_BORDER);
             transferState(TRACK_INIT);
             found_ctr = 0;
@@ -83,7 +86,7 @@ int Armor::run(Mat& frame)
             bbox_last = bbox;
         }
         if (unfound_ctr >= EXPLORE_SEND_STOP_THRES) {
-            serial.sendTarget(srcW / 2, srcH / 2, NOT_FOUND);
+            sendTarget(srcW / 2, srcH / 2, NOT_FOUND);
             found_ctr = 0;
             unfound_ctr = 0;
         }
@@ -109,9 +112,9 @@ int Armor::run(Mat& frame)
                     && bbox_last.y < center_y
                     && center_y < bbox_last.y + bbox_last.height) {
                 // if center is in box, predict it run at const velocity
-                serial.sendTarget(2 * x - x_last, y, FOUND_CENTER);
+                sendTarget(2 * x - x_last, y, FOUND_CENTER);
             } else {
-                serial.sendTarget(x, y, FOUND_BORDER);
+                sendTarget(x, y, FOUND_BORDER);
             }
             ++found_ctr;
             unfound_ctr = 0;
@@ -316,4 +319,55 @@ bool Armor::explore(Mat& frame)
     imshow("gray", bin);
 #endif
     return true;
+}
+
+void Armor::sendTarget(int target_x, int target_y, int is_found)
+{
+    if (target_x < 0 || target_x > 640 || target_y < 0 || target_y > 480) {
+        is_found = 0;
+        target_x = 320;
+        target_y = 240;
+    }
+    cout << dec << "x:" << target_x << " y:" << target_y << endl;
+
+    char buf[7];
+    buf[0] = 0xA5;
+    buf[1] = (target_x >> 8) & 0xFF;
+    buf[2] = target_x & 0xFF;
+    if (is_found == 2) {
+        buf[3] = 0xA6;
+    } else if (is_found == 1) {
+        buf[3] = 0xA6;
+    } else {
+        buf[3] = 0xA4;
+    }
+    buf[4] = (target_y >> 8) & 0xFF;
+    buf[5] = target_y & 0xFF;
+    buf[6] = 0xA7;
+
+    for (int i = 0; i < 7; ++i) {
+        cout << hex << (unsigned int)buf[i] << " ";
+    }
+    cout << endl;
+    if((mkfifo(_PATH_, 0777) < 0) && (errno != EEXIST))  
+    {  
+        printf("cannot create fifo...\n");  
+        exit(1);  
+    }
+    int fd;
+    while(( fd = open (_PATH_, O_WRONLY|O_NONBLOCK) )< 0){
+        cout << "open error!" << endl;
+    
+
+    }
+//    for(int i = 0; fd < 0 && i;)
+
+    //char* pipeptr = NULL;
+
+    //memset(pipeptr, '\0', _SIZE_);
+
+    if(write(fd,buf,7) < 0){
+        cout << "write error!" << endl;
+    }
+    close(fd);
 }

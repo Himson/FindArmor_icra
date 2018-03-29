@@ -14,7 +14,7 @@
 
 #if PLATFORM == PC
 
-#define VIDEO VIDEO_FILE
+#define VIDEO VIDEO_CAMERA
 #define DRAW 1
 
 #elif PLATFORM == MANIFOLD

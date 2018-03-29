@@ -1,6 +1,7 @@
 #include "Serial.h"
 #include "kcftracker.hpp"
 #include "precom.h"
+#include "/home/li/icra_ws/src/detection/src/fifo.h"
 
 #include <iostream>
 #include <opencv2/core/core.hpp>
@@ -8,6 +9,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #define NOT_FOUND 0
 #define FOUND_BORDER 1
@@ -15,6 +18,7 @@
 
 using namespace cv;
 using namespace std;
+
 
 class Armor {
 private:
@@ -68,4 +72,5 @@ private:
     bool explore(Mat& frame);
     void trackInit(Mat& frame);
     bool track(Mat& frame);
+    void sendTarget(int target_x, int target_y, int is_found);
 };
